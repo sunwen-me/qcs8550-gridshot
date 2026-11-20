@@ -1,14 +1,14 @@
 # 在 AidLux 部署
 
-## 接线与环境
+## 接线
 
-1. 电脑的视频输出接板上的 **HDMI IN**（不是 HDMI OUT）。让靶场显示在这一路，或镜像画面。板上 `cat /sys/class/hdmi_in1/lt6911_detect/resolution` 应报告 `1920x1080`。
-2. 板上的 USB-C **OTG 数据口**用数据线接电脑。不要把两个 USB Host 口相连。HID 测试前先保留独立的 SSH 连接。
-3. 已验证的平台是犀牛派 X1 / QCS8550，AidLux 的 QMMF 插件和具备 GStreamer 支持的 OpenCV。可先运行 `gst-inspect-1.0 qtiqmmfsrc`。USB Gadget 脚本假定系统用 `g1/configs/c.1`、控制器名 `a600000.dwc3`；其他固件需自行核对，不能直接照跑。
+1. 电脑的视频输出接犀牛派 X1 的 **HDMI IN**，把 Gridshot 放到这一路显示或镜像过去。用 `cat /sys/class/hdmi_in1/lt6911_detect/resolution` 查看输入分辨率。
+2. 板上的 USB-C **OTG 数据口**接电脑。用 SSH 操作板子，重绑 USB 时这一路会短暂断开。
+3. 用 `gst-inspect-1.0 qtiqmmfsrc` 检查采集插件。USB 脚本对应 `g1/configs/c.1` 和控制器 `a600000.dwc3`。
 
-## QNN 构建（可选）
+## 编译 QNN 版
 
-本仓库不包含 `qnn_runtime` 适配器。如果你已有兼容的本地 `qnn_runtime/session.hpp` 和静态库，可以复用；否则先使用 README 中的 ONNX 路径。QNN 适配器需提供代码中使用的 `Session::load`、张量访问、`run` 和 `read_f32`。原型在板上使用 QAIRT 2.50 的配套 HTP 运行库及 FP16 context。
+板上实测用 QAIRT 2.50、HTP 和 FP16 context。构建时传入本地 `qnn_runtime` 适配器的头文件和静态库；没有这套依赖就走 [README 的 ONNX 路径](../README.md#怎么跑)。
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGRIDSHOT_WITH_QNN=ON \
@@ -22,19 +22,19 @@ export AIMLABS_MODEL=/path/to/ball-detector-context.bin
 ./live/run-live.sh --hdmi
 ```
 
-只读检测不会打开 `/dev/hidg0`。先确认日志中出现正确的 `detections` 与 `centers`，然后停掉只读进程，再配置鼠标。
+确认日志里的 `detections` 和 `centers` 对得上画面，再退出检测进程。
 
-## HID 与校准
+## 配置 HID 和校准
 
 ```bash
 sudo bash scripts/usb-mouse.sh enable
 ls -l /dev/hidg*
-# 确认 hidg0 是脚本新建的鼠标接口之后，才执行：
+# 确认 hidg0 对应新增的鼠标接口
 sudo setfacl -m "u:$(id -un):-w-" /dev/hidg0
 python3 live/calibrate-gridshot.py
 ./live/run-live.sh --active
 ```
 
-脚本配置三字节相对报文 `[buttons, dx, dy]`，重绑时 USB 会短暂断开；原 ADB 和诊断配置会保留。重启后可能需要重新启用和赋权。校准会在三个静止球靶的画面上分别移动 X/Y 再移回，写入本地 `live/gridshot-calibration.json`；请只在离线靶场操作。改游戏灵敏度、分辨率或输入配置后重新校准。校准里的反馈测量是参考记录；启动器当前默认超时为 120 ms。
+脚本保留原来的 ADB 和诊断接口，新增的鼠标用三字节报文 `[buttons, dx, dy]`。校准时保持三个球靶静止；脚本会沿 X、Y 各移一次再移回，结果写到 `live/gridshot-calibration.json`。改分辨率或鼠标灵敏度后重新校准。启动器默认反馈超时为 120 ms。
 
-想停用 USB 鼠标：先 Ctrl+C 停程序，再执行 `sudo bash scripts/usb-mouse.sh disable`。只想看画面检测则用 `./live/run-live.sh --hdmi`；它不需要鼠标设备。
+`Ctrl+C` 停程序；`sudo bash scripts/usb-mouse.sh disable` 移除鼠标接口。重启后如果接口消失，重新启用并赋权即可。

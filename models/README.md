@@ -1,22 +1,24 @@
-# 模型接口
+# 模型格式
 
-将自行训练或获准使用的模型放在本目录，或设置 `AIMLABS_MODEL` 指向其他路径。权重、数据和厂商运行时不会提交。
+把模型放在本目录，或用 `AIMLABS_MODEL` 指定路径。
 
-| 路径 | 输入 | 输出 |
+| 后端 | 输入 | 输出 |
 |---|---|---|
-| OpenCV DNN `.onnx` | FP32 RGB，`[1,3,640,640]`，归一化到 0–1 | FP32 `[1,5,8400]` |
-| QNN context `.bin` | FP16 RGB，`[1,640,640,3]`，归一化到 0–1 | `[1,5,8400]`，适配器可读取为 FP32 |
+| OpenCV DNN `.onnx` | FP32 RGB `[1,3,640,640]`，归一化到 0–1 | FP32 `[1,5,8400]` |
+| QNN context `.bin` | FP16 RGB `[1,640,640,3]`，归一化到 0–1 | `[1,5,8400]`，由适配器读为 FP32 |
 
-输出五个通道为 `(cx, cy, w, h, score)`，坐标是补边后 640×640 模型输入上的像素坐标。一个类别、未做 NMS。模型文件扩展名为 `.onnx` 时走 OpenCV；其他扩展名走 QNN 构建。
+输出为 `(cx, cy, w, h, score)`，坐标按补边后的 640×640 输入计算，一个类别，模型不做 NMS。运行时按扩展名选择后端：`.onnx` 走 OpenCV，其余走 QNN。
 
-`training/train.py`、`refine-v2.py` 与 `export.py` 是原型训练、可选微调和 ONNX 导出的参考脚本。训练目录预期如下：
+## 训练和导出
 
 ```text
 training/
-  yolo11n.pt              # 自行合法获取，需兼容 Ultralytics YOLO11
+  yolo11n.pt
   data/{train,valid,test}/
-    images/               # 使用有权训练和分享的数据
+    images/
     labels/               # YOLO 格式；类别 0 = Turquoise Ball
 ```
 
-原训练脚本需要 CUDA、PyTorch 和 Ultralytics。ONNX 导出检查还需要 NumPy、OpenCV、ONNX 和 ONNX Runtime。先训练，随后执行 `python training/export.py`；脚本从 `training/runs/ball/weights/best.pt` 导出固定 `[1,3,640,640]` ONNX。不附带数据，因此不能从仓库直接重建原权重。QNN 需要另行转换为适配板上 QAIRT/HTP 的 context binary；把 ONNX 改后缀并不能运行，也不要把 NCHW context 当成 NHWC 使用。
+用 CUDA、PyTorch 和 Ultralytics 跑 `python training/train.py`。`training/refine-v2.py` 是可选的微调脚本。然后用 `python training/export.py` 从 `training/runs/ball/weights/best.pt` 导出 ONNX。导出检查依赖 NumPy、OpenCV、ONNX 和 ONNX Runtime。
+
+QNN 版需要另行生成与板上 QAIRT/HTP 匹配的 FP16 NHWC context。
